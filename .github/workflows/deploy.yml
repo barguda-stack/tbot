@@ -1,0 +1,38 @@
+name: Автоматическое развертывание бота
+
+on:
+  push:
+    branches:
+      - main # Измените это значение, если хотите запускать деплой для другой ветки
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Получение кода (Checkout)
+        uses: actions/checkout@v3
+
+      # ---------------------------------------------------------
+      # ПРИМЕЧАНИЕ ДЛЯ ПОЛЬЗОВАТЕЛЯ:
+      # Поскольку точная конфигурация вашего сервера неизвестна, 
+      # ниже представлен шаблон для деплоя по SSH. 
+      # Вам необходимо добавить следующие секреты (Secrets) в настройки репозитория на GitHub:
+      # HOST (IP-адрес сервера)
+      # USERNAME (Имя пользователя на сервере)
+      # SSH_PRIVATE_KEY (Ваш приватный SSH-ключ для доступа)
+      # ---------------------------------------------------------
+      - name: Развертывание на сервере (Deploy)
+        # Раскомментируйте блок ниже, чтобы включить автоматический деплой по SSH
+        # uses: appleboy/ssh-action@v0.1.10
+        # with:
+        #   host: ${{ secrets.HOST }}
+        #   username: ${{ secrets.USERNAME }}
+        #   key: ${{ secrets.SSH_PRIVATE_KEY }}
+        #   script: |
+        #     cd /путь/к/вашему/боту
+        #     git pull origin main
+        #     source venv/bin/activate
+        #     pip install -r requirements.txt
+        #     # Перезапустите сервис вашего бота (например, через systemctl, pm2 или docker)
+        #     systemctl restart tinkoff-bot.service
+        run: echo "Шаг развертывания в данный момент является шаблоном. Ознакомьтесь с комментариями в файле .github/workflows/deploy.yml для его настройки."
