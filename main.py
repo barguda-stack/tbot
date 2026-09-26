@@ -46,23 +46,40 @@ def get_account_balance(client: Client, account_id: str) -> float:
         logger.error(f"Ошибка при получении портфеля: {e}")
         return 0.0
 
+def get_price(client: Client, figi: str) -> float:
+    """Получает последнюю цену по заданному FIGI."""
+    try:
+        prices = client.market_data.get_last_prices(figi=[figi])
+        if prices.last_prices:
+            # Конвертируем Quotation (units и nano) в float
+            price_obj = prices.last_prices[0].price
+            return price_obj.units + price_obj.nano / 1e9
+    except RequestError as e:
+        logger.error(f"Ошибка при получении цены: {e}")
+    return 0.0
+
 def trading_loop(client: Client, account_id: str):
     """
-    Базовый цикл, который будет работать непрерывно.
-    Здесь вы должны разместить свою логику для проверки цен, сигналов и совершения сделок.
+    Рабочий торговый цикл. Для начала мы просто получаем баланс и цену акции.
     """
     logger.info("Запуск торгового цикла...")
+    
+    # FIGI обыкновенной акции Сбербанка (SBER)
+    SBER_FIGI = "BBG004730N88"
+    
     while True:
         try:
             # 1. Проверка баланса
             balance = get_account_balance(client, account_id)
             
-            # 2. Получение рыночных данных и проверка сигналов стратегии
-            # TODO: Реализуйте здесь логику вашей стратегии.
-            # Пример: Получение свечей, расчет индикаторов (MA, RSI) и т.д.
+            # 2. Получение текущей цены Сбербанка
+            sber_price = get_price(client, SBER_FIGI)
+            logger.info(f"Текущая цена Сбербанка (FIGI: {SBER_FIGI}): {sber_price} руб.")
             
-            # 3. Исполнение сделок
-            # TODO: Если сработал сигнал, используйте client.orders.post_order(...)
+            # 3. Логика стратегии
+            # Здесь будет ваша торговая логика (покупка/продажа)
+            if sber_price > 0:
+                logger.info(f"Следим за ценой. Баланс позволяет купить {int(balance // sber_price)} акций.")
             
             logger.info("Ожидание перед следующим циклом проверки...")
             time.sleep(60) # Ждем 60 секунд перед следующей проверкой
