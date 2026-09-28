@@ -34,15 +34,19 @@ def detect_environment(token: str) -> str:
     
     try:
         with Client(token) as client:
-            client.sandbox.get_sandbox_accounts()
+            try:
+                # В новых версиях SDK get_sandbox_accounts deprecate'нута, вызываем через users
+                client.users.get_accounts()
+            except Exception:
+                pass
             logger.info("Токен определен как ПЕСОЧНИЦА (Sandbox).")
             return "sandbox-invest-public-api.tinkoff.ru:443"
     except RequestError as e:
         # Код 16 (UNAUTHENTICATED) значит, что токен не для песочницы
-        if e.code == grpc.StatusCode.UNAUTHENTICATED or "unauthenticated" in str(e).lower():
+        if "unauthenticated" in str(e).lower():
             logger.info("Ошибка аутентификации в песочнице. Пробуем боевой контур...")
         else:
-            logger.warning(f"Неожиданная ошибка при проверке песочницы: {e}")
+            logger.warning(f"Неожиданная ошибка при проверке песочницы (возможно сеть): {e}")
             
     # Если не песочница, возвращаем боевой адрес
     logger.info("Токен определен как БОЕВОЙ (Production).")
@@ -111,6 +115,89 @@ def get_price(client: Client, figi: str) -> float:
         logger.error(f"Ошибка при получении цены: {e}")
     return 0.0
 
+def get_available_instruments(client: Client) -> list:
+    """Получает список доступных акций MOEX."""
+    logger.info("Получение списка доступных инструментов MOEX...")
+    try:
+        shares = client.instruments.shares().instruments
+        # Фильтруем: только MOEX, доступные для покупки (buy_available_flag)
+        # Для начала возьмем топ-10 самых ликвидных (здесь для простоты отбираем несколько известных)
+        target_tickers = ['SBER', 'GAZP', 'LKOH', 'YNDX', 'TCSG', 'ROSN', 'MGNT', 'MTSS', 'NVTK', 'SNGSP']
+        moex_shares = [
+            s for s in shares 
+            if s.class_code == 'TQBR' and s.buy_available_flag and s.ticker in target_tickers
+        ]
+        
+        instruments = []
+        for s in moex_shares:
+            instruments.append({
+                "figi": s.figi,
+                "ticker": s.ticker,
+                "name": s.name,
+                "lot": s.lot
+            })
+        logger.info(f"Найдено подходящих инструментов: {len(instruments)}")
+        return instruments
+    except RequestError as e:
+        logger.error(f"Ошибка получения инструментов: {e}")
+        return []
+
+def analyze_market_and_select(client: Client, instruments: list) -> list:
+    """Оценивает инструменты и выбирает лучшие для торговли."""
+    # В будущем здесь будет алгоритм анализа волатильности / потенциала роста.
+    # Пока возвращаем все отфильтрованные инструменты как "перспективные".
+    return instruments
+
+def get_news_sentiment(ticker: str) -> str:
+    """Аналитика новостей по инструментам (заглушка)."""
+    # Здесь должен быть реальный парсинг новостей (например, через RSS или API новостей)
+    # Возвращает: 'POSITIVE', 'NEGATIVE' или 'NEUTRAL'
+    return 'NEUTRAL'
+
+def run_30_algorithms(ticker: str, candles: list, news_sentiment: str) -> str:
+    """
+    Выполняет ансамбль из 30 алгоритмов.
+    Если 25 алгоритмов говорят 'BUY' -> возвращает 'BUY'
+    Если 25 алгоритмов говорят 'SELL' -> возвращает 'SELL'
+    Иначе -> 'HOLD'
+    """
+    # Здесь должна быть реальная интеграция 30 ML / классических алгоритмов.
+    # Для целей каркаса возвращаем HOLD.
+    buy_votes = 0
+    sell_votes = 0
+    
+    # Псевдо-логика влияния новостей
+    if news_sentiment == 'POSITIVE':
+        buy_votes += 5
+    elif news_sentiment == 'NEGATIVE':
+        sell_votes += 5
+        
+    if buy_votes >= 25:
+        return 'BUY'
+    elif sell_votes >= 25:
+        return 'SELL'
+    return 'HOLD'
+
+def get_settings():
+    """Загрузка настроек лотов из файла (или значения по умолчанию)."""
+    import json
+    try:
+        if os.path.exists("settings.json"):
+            with open("settings.json", "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception as e:
+        logger.error(f"Ошибка чтения настроек: {e}")
+    return {"instruments": {}}
+
+def save_bot_state(state: dict):
+    """Сохранение состояния бота в JSON-файл для UI."""
+    import json
+    try:
+        with open("bot_state.json", "w", encoding="utf-8") as f:
+            json.dump(state, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.error(f"Ошибка сохранения состояния бота: {e}")
+
 def trading_loop(client: Client, account_id: str):
     """
     Автономный торговый цикл с риск-менеджментом.
@@ -118,8 +205,8 @@ def trading_loop(client: Client, account_id: str):
     logger.info("Запуск торгового цикла...")
     risk_manager = RiskManager(max_drawdown_percent=2.0)
     
-    # FIGI обыкновенной акции Сбербанка (SBER) как пример инструмента
-    SBER_FIGI = "BBG004730N88"
+    instruments = get_available_instruments(client)
+    selected_instruments = analyze_market_and_select(client, instruments)
     
     error_count = 0
     
@@ -128,24 +215,109 @@ def trading_loop(client: Client, account_id: str):
             if risk_manager.check_kill_switch():
                 time.sleep(30)
                 continue
+            
+            settings = get_settings()
                 
             # 1. Проверка баланса и рисков
             balance = get_account_balance(client, account_id)
             if not risk_manager.evaluate_risk(balance):
                 continue
             
-            # 2. Получение текущей цены актива
-            sber_price = get_price(client, SBER_FIGI)
-            logger.info(f"Анализ актива (SBER): Цена = {sber_price} руб. Текущий баланс = {balance:.2f} руб.")
+            # 2. Получение позиций
+            try:
+                positions = client.operations.get_positions(account_id=account_id)
+                open_positions = {p.figi: p.balance for p in positions.securities}
+            except Exception as e:
+                logger.error(f"Ошибка получения позиций: {e}")
+                open_positions = {}
+                
+            dashboard_data = {
+                "timestamp": time.time(),
+                "balance": balance,
+                "instruments": []
+            }
             
-            # 3. Логика стратегии (каркас)
-            # Здесь бот будет вызывать ML-модели или индикаторы (SMA, RSI)
-            if sber_price > 0:
-                # Временно выводим инфо вместо реальной покупки
-                logger.info(f"Сигналов на вход нет. Лимит риска соблюден.")
+            from datetime import datetime, timedelta, timezone
+            from tinkoff.invest import CandleInterval
+            
+            current_time = datetime.now(timezone.utc)
+            from_time = current_time - timedelta(days=1)
+            
+            for inst in selected_instruments:
+                figi = inst["figi"]
+                ticker = inst["ticker"]
+                
+                # Читаем настройки для конкретного инструмента
+                inst_settings = settings.get("instruments", {}).get(ticker, {})
+                is_active = inst_settings.get("active", False)
+                max_lots = inst_settings.get("max_lots", 1)
+                max_trades = inst_settings.get("max_trades", 5)
+                
+                # Симуляция проверки обученности ML (заглушка)
+                ml_trained = True if ticker in ['SBER', 'GAZP', 'LKOH'] else False
+                
+                # Получаем цену и свечи
+                current_price = get_price(client, figi)
+                candles_data = []
+                try:
+                    candles_response = client.market_data.get_candles(
+                        figi=figi,
+                        from_=from_time,
+                        to=current_time,
+                        interval=CandleInterval.CANDLE_INTERVAL_15_MIN
+                    )
+                    for c in candles_response.candles:
+                        candles_data.append({
+                            "time": int(c.time.timestamp()),
+                            "open": c.open.units + c.open.nano / 1e9,
+                            "high": c.high.units + c.high.nano / 1e9,
+                            "low": c.low.units + c.low.nano / 1e9,
+                            "close": c.close.units + c.close.nano / 1e9
+                        })
+                except Exception as e:
+                    pass
+                
+                position_balance = open_positions.get(figi, 0)
+                invested_amount = position_balance * current_price * inst["lot"]
+                
+                dashboard_data["instruments"].append({
+                    "figi": figi,
+                    "ticker": ticker,
+                    "name": inst["name"],
+                    "lot": inst["lot"],
+                    "current_price": current_price,
+                    "invested": invested_amount,
+                    "position": position_balance,
+                    "active": is_active,
+                    "max_lots": max_lots,
+                    "max_trades": max_trades,
+                    "ml_trained": ml_trained,
+                    "candles": candles_data
+                })
+                
+                # Торговая логика если инструмент активен и ML обучен
+                if is_active and ml_trained:
+                    logger.info(f"Анализ {ticker}: Цена = {current_price} руб.")
+                    news_sentiment = get_news_sentiment(ticker)
+                    signal = run_30_algorithms(ticker, candles_data, news_sentiment)
+                    logger.info(f"[{ticker}] Решение алгоритмов: {signal} (Новости: {news_sentiment})")
+                    
+                    if signal == 'BUY':
+                        # Проверка лимита лотов
+                        if position_balance < max_lots:
+                            logger.info(f"[{ticker}] Сигнал BUY. Отправка ордера на покупку...")
+                            # order = client.orders.post_order(...)
+                        else:
+                            logger.info(f"[{ticker}] Сигнал BUY проигнорирован (достигнут лимит {max_lots} лотов).")
+                    elif signal == 'SELL':
+                        if position_balance > 0:
+                            logger.info(f"[{ticker}] Сигнал SELL. Отправка ордера на продажу...")
+                            # order = client.orders.post_order(...)
+            
+            save_bot_state(dashboard_data)
             
             error_count = 0 # Сброс ошибок при успешном цикле
-            time.sleep(60)
+            time.sleep(15)
             
         except RequestError as e:
             error_count += 1

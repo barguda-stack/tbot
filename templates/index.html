@@ -5,9 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Управление Торговым Ботом</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <style>
-        body { padding: 20px; font-family: sans-serif; }
+        body { padding: 20px; font-family: sans-serif; background-color: #f4f6f9; }
         .commit-list { max-height: 400px; overflow-y: auto; }
+        .instrument-card { border-radius: 10px; border: none; transition: transform 0.2s; }
+        .instrument-card:hover { transform: translateY(-3px); }
+        .mini-chart { height: 150px; width: 100%; border-bottom: 1px solid #eee; }
+        .stat-value { font-weight: 600; font-size: 1.1em; }
     </style>
 </head>
 <body>
@@ -80,20 +85,18 @@
                 </div>
             </div>
 
-            <div class="row">
+            <div class="row mb-3">
                 <div class="col-12">
-                    <div class="card shadow mb-4">
-                        <div class="card-header bg-white fw-bold">
-                            График производительности
-                        </div>
-                        <div class="card-body">
-                            <!-- Подготовка места под график -->
-                            <div style="height: 400px; width: 100%; display: flex; align-items: center; justify-content: center; background-color: #f8f9fa; border: 1px dashed #dee2e6;">
-                                <span class="text-muted" id="chart-placeholder">График будет загружен после выбора метрики...</span>
-                                <canvas id="tradingChart" style="display: none;"></canvas>
-                            </div>
-                        </div>
-                    </div>
+                    <h4 class="fw-bold">Доступные инструменты (Анализ рынка)</h4>
+                    <p class="text-muted small">Бот автоматически отбирает ликвидные инструменты без плеча.</p>
+                </div>
+            </div>
+
+            <!-- Контейнер для сетки карточек -->
+            <div class="row" id="instruments-container">
+                <div class="col-12 text-center text-muted py-5">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <p class="mt-2">Загрузка данных об инструментах...</p>
                 </div>
             </div>
         </div>
@@ -250,6 +253,208 @@
     setInterval(fetchLogs, 2000);
     // Первый вызов при загрузке
     fetchLogs();
+
+    // ----------------------------------------------------
+    // Логика Инфографики (Карточки инструментов)
+    // ----------------------------------------------------
+    const chartsMap = new Map();
+
+    function createCard(inst) {
+        const col = document.createElement('div');
+        col.className = 'col-lg-4 col-md-6 mb-4';
+        col.id = `card-${inst.ticker}`;
+
+        const isTrainedClass = inst.ml_trained ? 'bg-success' : 'bg-warning text-dark';
+        const isTrainedText = inst.ml_trained ? 'Обучен (Готов)' : 'Обучение... (Блок)';
+
+        col.innerHTML = `
+            <div class="card shadow-sm instrument-card h-100">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center border-0 pt-3">
+                    <h5 class="m-0 fw-bold">${inst.ticker} <span class="badge ${isTrainedClass} ms-2 fs-6">${isTrainedText}</span></h5>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input toggle-active" type="checkbox" data-ticker="${inst.ticker}" ${inst.active ? 'checked' : ''} ${!inst.ml_trained ? 'disabled' : ''}>
+                    </div>
+                </div>
+                
+                <div class="mini-chart" id="chart-${inst.ticker}"></div>
+                
+                <div class="card-body bg-light">
+                    <div class="row text-center mb-3">
+                        <div class="col-6 border-end">
+                            <div class="text-muted small">Цена</div>
+                            <div class="stat-value" id="price-${inst.ticker}">${inst.current_price.toFixed(2)} ₽</div>
+                        </div>
+                        <div class="col-6">
+                            <div class="text-muted small">Вложено</div>
+                            <div class="stat-value text-primary" id="invested-${inst.ticker}">${inst.invested.toFixed(2)} ₽</div>
+                        </div>
+                    </div>
+                    
+                    <div class="row text-center mb-3">
+                        <div class="col-12">
+                            <div class="text-muted small">Позиция: <span id="pos-${inst.ticker}" class="fw-bold">${inst.position} шт.</span> (Лот: ${inst.lot})</div>
+                        </div>
+                    </div>
+
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <label class="form-label small text-muted mb-1">Макс. лотов</label>
+                            <input type="number" class="form-control form-control-sm input-max-lots" data-ticker="${inst.ticker}" value="${inst.max_lots}" min="1">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small text-muted mb-1">Макс. сделок</label>
+                            <input type="number" class="form-control form-control-sm input-max-trades" data-ticker="${inst.ticker}" value="${inst.max_trades}" min="1">
+                        </div>
+                    </div>
+                    <div class="row mt-2">
+                        <div class="col-12">
+                            <button class="btn btn-sm btn-outline-secondary w-100 btn-save-settings" data-ticker="${inst.ticker}">Сохранить лимиты</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        return col;
+    }
+
+    function initMiniChart(containerId) {
+        const chartContainer = document.getElementById(containerId);
+        if (!chartContainer) return null;
+        
+        const chart = LightweightCharts.createChart(chartContainer, {
+            layout: { background: { type: 'solid', color: '#ffffff' }, textColor: '#333' },
+            grid: { vertLines: { visible: false }, horzLines: { color: '#f0f3fa' } },
+            timeScale: { timeVisible: true, secondsVisible: false },
+            rightPriceScale: { visible: false },
+            leftPriceScale: { visible: true, borderColor: '#f0f3fa' },
+            handleScroll: false,
+            handleScale: false
+        });
+        
+        const series = chart.addCandlestickSeries({
+            upColor: '#26a69a', downColor: '#ef5350', borderVisible: false,
+            wickUpColor: '#26a69a', wickDownColor: '#ef5350'
+        });
+        
+        // Авто-ресайз
+        new ResizeObserver(entries => {
+            if (entries.length === 0 || entries[0].target !== chartContainer) return;
+            const newRect = entries[0].contentRect;
+            chart.applyOptions({ width: newRect.width, height: newRect.height });
+        }).observe(chartContainer);
+
+        return { chart, series };
+    }
+
+    function fetchDashboard() {
+        fetch('/api/dashboard')
+            .then(res => {
+                if(!res.ok) throw new Error("Данные не готовы");
+                return res.json();
+            })
+            .then(data => {
+                document.getElementById('stat-balance').textContent = (data.balance || 0).toFixed(2) + " ₽";
+                
+                const container = document.getElementById('instruments-container');
+                if (!data.instruments || data.instruments.length === 0) {
+                    container.innerHTML = '<div class="col-12 text-center text-muted">Инструменты не найдены</div>';
+                    return;
+                }
+
+                // Очистка при первой загрузке
+                if (container.querySelector('.spinner-border')) {
+                    container.innerHTML = '';
+                }
+
+                let activePositionsCount = 0;
+
+                data.instruments.forEach(inst => {
+                    let card = document.getElementById(`card-${inst.ticker}`);
+                    
+                    if (!card) {
+                        // Создаем новую карточку
+                        card = createCard(inst);
+                        container.appendChild(card);
+                        
+                        // Инициализируем график
+                        const chartObj = initMiniChart(`chart-${inst.ticker}`);
+                        if (chartObj) {
+                            chartsMap.set(inst.ticker, chartObj);
+                        }
+                        
+                        // Привязываем обработчики событий
+                        bindCardEvents(inst.ticker);
+                    } else {
+                        // Обновляем существующую карточку
+                        document.getElementById(`price-${inst.ticker}`).textContent = inst.current_price.toFixed(2) + " ₽";
+                        document.getElementById(`invested-${inst.ticker}`).textContent = inst.invested.toFixed(2) + " ₽";
+                        document.getElementById(`pos-${inst.ticker}`).textContent = inst.position + " шт.";
+                        
+                        // Обновляем чекбокс активности только если он не в фокусе (чтобы не мешать пользователю)
+                        const toggle = card.querySelector('.toggle-active');
+                        if (document.activeElement !== toggle) {
+                            toggle.checked = inst.active;
+                        }
+                    }
+                    
+                    if (inst.position > 0) activePositionsCount++;
+
+                    // Обновляем данные графика
+                    if (inst.candles && inst.candles.length > 0) {
+                        const chartObj = chartsMap.get(inst.ticker);
+                        if (chartObj) {
+                            const sortedCandles = inst.candles.sort((a, b) => a.time - b.time);
+                            chartObj.series.setData(sortedCandles);
+                        }
+                    }
+                });
+                
+                document.getElementById('stat-positions').textContent = activePositionsCount;
+            })
+            .catch(e => console.log("Dashboard fetch skipped:", e));
+    }
+
+    function bindCardEvents(ticker) {
+        const card = document.getElementById(`card-${ticker}`);
+        if (!card) return;
+
+        // Включение/Выключение
+        const toggle = card.querySelector('.toggle-active');
+        toggle.addEventListener('change', function() {
+            updateInstrumentSettings(ticker, { active: this.checked });
+        });
+
+        // Кнопка сохранения лимитов
+        const saveBtn = card.querySelector('.btn-save-settings');
+        saveBtn.addEventListener('click', function() {
+            const maxLots = card.querySelector('.input-max-lots').value;
+            const maxTrades = card.querySelector('.input-max-trades').value;
+            updateInstrumentSettings(ticker, { max_lots: maxLots, max_trades: maxTrades });
+        });
+    }
+
+    function updateInstrumentSettings(ticker, payload) {
+        payload.ticker = ticker;
+        fetch('/api/update_instrument', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success') {
+                // Визуальный feedback (можно сделать toast)
+                console.log(`Настройки для ${ticker} обновлены`);
+            } else {
+                alert('Ошибка: ' + data.message);
+            }
+        });
+    }
+
+    // Опрос каждые 5 секунд
+    setInterval(fetchDashboard, 5000);
+    setTimeout(fetchDashboard, 1000);
+
 </script>
 </body>
 </html>

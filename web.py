@@ -1,6 +1,7 @@
 import os
+import json
 import subprocess
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 
 app = Flask(__name__)
 app.secret_key = "super_secret_trading_key"
@@ -44,6 +45,53 @@ def toggle_kill_switch():
             f.write("Manual activation")
         flash("ВНИМАНИЕ! Kill Switch АКТИВИРОВАН. Торговля остановлена!", "danger")
     return redirect(url_for('index'))
+
+@app.route('/api/dashboard')
+def api_dashboard():
+    """Возвращает текущее состояние бота для инфографики (список инструментов)."""
+    try:
+        if os.path.exists("bot_state.json"):
+            with open("bot_state.json", "r", encoding="utf-8") as f:
+                state = json.load(f)
+                return jsonify(state)
+        else:
+            return jsonify({"error": "Данные пока не собраны"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/update_instrument', methods=['POST'])
+def update_instrument():
+    """Обновляет настройки для конкретного инструмента."""
+    try:
+        data = request.json
+        ticker = data.get("ticker")
+        
+        # Читаем текущие настройки
+        settings = {"instruments": {}}
+        if os.path.exists("settings.json"):
+            with open("settings.json", "r", encoding="utf-8") as f:
+                settings = json.load(f)
+                
+        if "instruments" not in settings:
+            settings["instruments"] = {}
+            
+        if ticker not in settings["instruments"]:
+            settings["instruments"][ticker] = {}
+            
+        # Обновляем переданные поля
+        if "active" in data:
+            settings["instruments"][ticker]["active"] = bool(data["active"])
+        if "max_lots" in data:
+            settings["instruments"][ticker]["max_lots"] = int(data["max_lots"])
+        if "max_trades" in data:
+            settings["instruments"][ticker]["max_trades"] = int(data["max_trades"])
+            
+        with open("settings.json", "w", encoding="utf-8") as f:
+            json.dump(settings, f, ensure_ascii=False, indent=2)
+            
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
 
 @app.route('/logs')
 def get_logs():
