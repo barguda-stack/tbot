@@ -39,13 +39,27 @@ def get_logs():
         return {"logs": "Лог файл пока не создан. Запустите бота."}
     
     try:
-        with open(log_file_path, 'r', encoding='utf-8') as f:
+        # errors='replace' спасет от ошибки с кодировкой (например, если Windows пишет кириллицу в cp1251)
+        with open(log_file_path, 'r', encoding='utf-8', errors='replace') as f:
             lines = f.readlines()
             # Берем последние 50 строк
             last_lines = lines[-50:]
             return {"logs": "".join(last_lines)}
     except Exception as e:
         return {"logs": f"Ошибка чтения логов: {str(e)}"}
+
+@app.route('/update', methods=['POST'])
+def update_code():
+    """Выполняет git pull для получения последних обновлений с GitHub"""
+    try:
+        result = subprocess.run(
+            ['git', 'pull', 'origin', 'main'], 
+            capture_output=True, text=True, check=True
+        )
+        flash(f"Обновление успешно загружено!\n{result.stdout}", "success")
+    except subprocess.CalledProcessError as e:
+        flash(f"Ошибка при обновлении: {e.stderr if e.stderr else str(e)}", "danger")
+    return redirect(url_for('index'))
 
 @app.route('/start', methods=['POST'])
 def start_bot():

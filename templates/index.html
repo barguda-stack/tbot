@@ -43,8 +43,33 @@
         <!-- Вкладка: Торговый терминал -->
         <div class="tab-pane fade show active" id="trading" role="tabpanel" aria-labelledby="trading-tab">
             <div class="row">
+                <!-- Консоль логов на весь экран -->
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                            <span>Терминал (Логи работы)</span>
+                            <div>
+                                {% if status == 'Запущен' %}
+                                    <span class="badge bg-success me-2">Бот Активен</span>
+                                {% else %}
+                                    <span class="badge bg-danger me-2">Бот Остановлен</span>
+                                {% endif %}
+                                <span class="badge bg-secondary" id="log-status">Подключено</span>
+                            </div>
+                        </div>
+                        <div class="card-body bg-black text-light p-0">
+                            <pre id="bot-logs" class="m-0 p-3" style="height: 600px; overflow-y: auto; font-family: monospace; font-size: 14px; white-space: pre-wrap;">Загрузка логов...</pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Вкладка: Обновление и настройки -->
+        <div class="tab-pane fade" id="settings" role="tabpanel" aria-labelledby="settings-tab">
+            <div class="row">
                 <!-- Управление процессом -->
-                <div class="col-md-4">
+                <div class="col-md-5">
                     <div class="card mb-4">
                         <div class="card-header text-center fw-bold">
                             Управление ботом
@@ -64,29 +89,24 @@
                             </form>
                         </div>
                     </div>
-                </div>
 
-                <!-- Консоль логов -->
-                <div class="col-md-8">
-                    <div class="card">
-                        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-                            <span>Терминал (Логи работы)</span>
-                            <span class="badge bg-secondary" id="log-status">Подключено</span>
+                    <div class="card mb-4">
+                        <div class="card-header bg-info text-white text-center fw-bold">
+                            Обновление кода
                         </div>
-                        <div class="card-body bg-black text-light p-0">
-                            <pre id="bot-logs" class="m-0 p-3" style="height: 400px; overflow-y: auto; font-family: monospace; font-size: 14px; white-space: pre-wrap;">Загрузка логов...</pre>
+                        <div class="card-body text-center">
+                            <p class="text-muted small">Нажмите кнопку ниже, чтобы скачать последнюю версию кода с GitHub.</p>
+                            <form method="POST" action="/update">
+                                <button type="submit" class="btn btn-primary w-100 py-2">📥 Скачать обновления (Git Pull)</button>
+                            </form>
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
 
-        <!-- Вкладка: Обновление и настройки -->
-        <div class="tab-pane fade" id="settings" role="tabpanel" aria-labelledby="settings-tab">
-            <div class="row">
-                <div class="col-md-8 offset-md-2">
+                <!-- Версии и Откаты -->
+                <div class="col-md-7">
                     <div class="card">
-                        <div class="card-header bg-primary text-white">
+                        <div class="card-header bg-secondary text-white">
                             История версий и откаты (Git)
                         </div>
                         <div class="card-body commit-list">
