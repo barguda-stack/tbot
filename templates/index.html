@@ -30,7 +30,10 @@
     <!-- Вкладки навигации -->
     <ul class="nav nav-tabs mb-4" id="myTab" role="tablist">
         <li class="nav-item" role="presentation">
-            <button class="nav-link active" id="trading-tab" data-bs-toggle="tab" data-bs-target="#trading" type="button" role="tab" aria-controls="trading" aria-selected="true">Торговый бот</button>
+            <button class="nav-link active" id="dashboard-tab" data-bs-toggle="tab" data-bs-target="#dashboard" type="button" role="tab" aria-controls="dashboard" aria-selected="true">Торговля (Инфографика)</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="trading-tab" data-bs-toggle="tab" data-bs-target="#trading" type="button" role="tab" aria-controls="trading" aria-selected="false">Управление Ботом</button>
         </li>
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="settings-tab" data-bs-toggle="tab" data-bs-target="#settings" type="button" role="tab" aria-controls="settings" aria-selected="false">Обновление и настройки</button>
@@ -39,9 +42,64 @@
 
     <!-- Содержимое вкладок -->
     <div class="tab-content" id="myTabContent">
+
+        <!-- Вкладка: Торговля (Инфографика) -->
+        <div class="tab-pane fade show active" id="dashboard" role="tabpanel" aria-labelledby="dashboard-tab">
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="card bg-primary text-white shadow">
+                        <div class="card-body">
+                            <h6 class="card-title text-uppercase text-white-50">Текущий Баланс</h6>
+                            <h3 class="mb-0" id="stat-balance">0.00 ₽</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-success text-white shadow">
+                        <div class="card-body">
+                            <h6 class="card-title text-uppercase text-white-50">Открыто Позиций</h6>
+                            <h3 class="mb-0" id="stat-positions">0</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-info text-white shadow">
+                        <div class="card-body">
+                            <h6 class="card-title text-uppercase text-white-50">Профит (сессия)</h6>
+                            <h3 class="mb-0" id="stat-profit">0.00 ₽</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-danger text-white shadow">
+                        <div class="card-body">
+                            <h6 class="card-title text-uppercase text-white-50">Макс. Просадка</h6>
+                            <h3 class="mb-0" id="stat-drawdown">0.00 %</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-12">
+                    <div class="card shadow mb-4">
+                        <div class="card-header bg-white fw-bold">
+                            График производительности
+                        </div>
+                        <div class="card-body">
+                            <!-- Подготовка места под график -->
+                            <div style="height: 400px; width: 100%; display: flex; align-items: center; justify-content: center; background-color: #f8f9fa; border: 1px dashed #dee2e6;">
+                                <span class="text-muted" id="chart-placeholder">График будет загружен после выбора метрики...</span>
+                                <canvas id="tradingChart" style="display: none;"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
         
-        <!-- Вкладка: Торговый терминал -->
-        <div class="tab-pane fade show active" id="trading" role="tabpanel" aria-labelledby="trading-tab">
+        <!-- Вкладка: Управление Ботом -->
+        <div class="tab-pane fade" id="trading" role="tabpanel" aria-labelledby="trading-tab">
             <div class="row mb-3">
                 <div class="col-12">
                     <div class="card border-danger shadow">
