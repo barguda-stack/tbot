@@ -30,7 +30,7 @@
     <!-- Вкладки навигации -->
     <ul class="nav nav-tabs mb-4" id="myTab" role="tablist">
         <li class="nav-item" role="presentation">
-            <button class="nav-link active" id="trading-tab" data-bs-toggle="tab" data-bs-target="#trading" type="button" role="tab" aria-controls="trading" aria-selected="true">Торговый терминал</button>
+            <button class="nav-link active" id="trading-tab" data-bs-toggle="tab" data-bs-target="#trading" type="button" role="tab" aria-controls="trading" aria-selected="true">Торговый бот</button>
         </li>
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="settings-tab" data-bs-toggle="tab" data-bs-target="#settings" type="button" role="tab" aria-controls="settings" aria-selected="false">Обновление и настройки</button>
@@ -42,23 +42,45 @@
         
         <!-- Вкладка: Торговый терминал -->
         <div class="tab-pane fade show active" id="trading" role="tabpanel" aria-labelledby="trading-tab">
+            <div class="row mb-3">
+                <div class="col-12">
+                    <div class="card border-danger shadow">
+                        <div class="card-body d-flex justify-content-between align-items-center bg-light">
+                            <div>
+                                <h4 class="m-0 text-danger fw-bold">Аварийная остановка (Kill Switch)</h4>
+                                <small class="text-muted">Мгновенно останавливает торговые операции (позиции не закрываются автоматически)</small>
+                            </div>
+                            <form method="POST" action="/toggle_kill_switch">
+                                {% if kill_switch_active %}
+                                    <button type="submit" class="btn btn-warning btn-lg fw-bold">ДЕАКТИВИРОВАТЬ</button>
+                                {% else %}
+                                    <button type="submit" class="btn btn-danger btn-lg fw-bold px-5">KILL SWITCH</button>
+                                {% endif %}
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
             <div class="row">
                 <!-- Консоль логов на весь экран -->
                 <div class="col-12">
-                    <div class="card">
+                    <div class="card shadow">
                         <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
                             <span>Терминал (Логи работы)</span>
                             <div>
-                                {% if status == 'Запущен' %}
-                                    <span class="badge bg-success me-2">Бот Активен</span>
-                                {% else %}
-                                    <span class="badge bg-danger me-2">Бот Остановлен</span>
+                                {% if kill_switch_active %}
+                                    <span class="badge bg-danger me-2 blink">KILL SWITCH АКТИВЕН</span>
                                 {% endif %}
-                                <span class="badge bg-secondary" id="log-status">Подключено</span>
+                                {% if status == 'Запущен' %}
+                                    <span class="badge bg-success me-2">Бот Работает</span>
+                                {% else %}
+                                    <span class="badge bg-secondary me-2">Процесс остановлен</span>
+                                {% endif %}
+                                <span class="badge bg-primary" id="log-status">Подключено</span>
                             </div>
                         </div>
                         <div class="card-body bg-black text-light p-0">
-                            <pre id="bot-logs" class="m-0 p-3" style="height: 600px; overflow-y: auto; font-family: monospace; font-size: 14px; white-space: pre-wrap;">Загрузка логов...</pre>
+                            <pre id="bot-logs" class="m-0 p-3" style="height: 60vh; overflow-y: auto; font-family: monospace; font-size: 14px; white-space: pre-wrap;">Загрузка логов...</pre>
                         </div>
                     </div>
                 </div>

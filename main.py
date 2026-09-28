@@ -21,18 +21,64 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 TINKOFF_TOKEN = os.getenv("TINKOFF_TOKEN")
 ACCOUNT_ID = os.getenv("ACCOUNT_ID")
-# INVEST_GRPC_API - это контур для реальной торговли. При необходимости можно изменить на INVEST_GRPC_API_SANDBOX
-TARGET = os.getenv("TINKOFF_TARGET", INVEST_GRPC_API) 
 
+KILL_SWITCH_FILE = "kill_switch.flag"
+
+def detect_environment(token: str) -> str:
+    """Автоматическое определение типа токена (песочница или боевой)."""
+    logger.info("Автоматическое определение среды по токену...")
+    
+    # Сначала проверяем песочницу
+    import tinkoff.invest.constants
+    tinkoff.invest.constants.INVEST_GRPC_API = "sandbox-invest-public-api.tinkoff.ru:443"
+    
+    try:
+        with Client(token) as client:
+            client.sandbox.get_sandbox_accounts()
+            logger.info("Токен определен как ПЕСОЧНИЦА (Sandbox).")
+            return "sandbox-invest-public-api.tinkoff.ru:443"
+    except RequestError as e:
+        # Код 16 (UNAUTHENTICATED) значит, что токен не для песочницы
+        if e.code == grpc.StatusCode.UNAUTHENTICATED or "unauthenticated" in str(e).lower():
+            logger.info("Ошибка аутентификации в песочнице. Пробуем боевой контур...")
+        else:
+            logger.warning(f"Неожиданная ошибка при проверке песочницы: {e}")
+            
+    # Если не песочница, возвращаем боевой адрес
+    logger.info("Токен определен как БОЕВОЙ (Production).")
+    return "invest-public-api.tinkoff.ru:443"
 
 def init_client(token: str) -> Client:
-    """Инициализация и возврат клиента Tinkoff."""
-    logger.info("Инициализация клиента Tinkoff...")
-    # Присваиваем константе адрес песочницы, так как в старой версии API 
-    # аргумент target в Client не поддерживается
+    """Инициализация и возврат клиента Tinkoff с автоматическим адресом."""
+    target = detect_environment(token)
     import tinkoff.invest.constants
-    tinkoff.invest.constants.INVEST_GRPC_API = TARGET
+    tinkoff.invest.constants.INVEST_GRPC_API = target
     return Client(token)
+
+class RiskManager:
+    def __init__(self, max_drawdown_percent: float = 2.0):
+        self.max_drawdown_percent = max_drawdown_percent
+        self.initial_balance = None
+    
+    def check_kill_switch(self):
+        if os.path.exists(KILL_SWITCH_FILE):
+            logger.critical("ВНИМАНИЕ! Активирован Kill Switch (аварийная остановка). Бот приостанавливает торговлю!")
+            return True
+        return False
+        
+    def evaluate_risk(self, current_balance: float):
+        if self.initial_balance is None:
+            self.initial_balance = current_balance
+            return True
+            
+        drawdown = ((self.initial_balance - current_balance) / self.initial_balance) * 100
+        if drawdown >= self.max_drawdown_percent:
+            logger.critical(f"Превышен лимит просадки: {drawdown:.2f}% (Макс: {self.max_drawdown_percent}%). Активация программного Kill Switch!")
+            # Создаем файл для глобальной остановки
+            with open(KILL_SWITCH_FILE, 'w') as f:
+                f.write("Drawdown limit exceeded")
+            return False
+        return True
 
 def get_account_balance(client: Client, account_id: str) -> float:
     """
@@ -67,33 +113,48 @@ def get_price(client: Client, figi: str) -> float:
 
 def trading_loop(client: Client, account_id: str):
     """
-    Рабочий торговый цикл. Для начала мы просто получаем баланс и цену акции.
+    Автономный торговый цикл с риск-менеджментом.
     """
     logger.info("Запуск торгового цикла...")
+    risk_manager = RiskManager(max_drawdown_percent=2.0)
     
-    # FIGI обыкновенной акции Сбербанка (SBER)
+    # FIGI обыкновенной акции Сбербанка (SBER) как пример инструмента
     SBER_FIGI = "BBG004730N88"
+    
+    error_count = 0
     
     while True:
         try:
-            # 1. Проверка баланса
+            if risk_manager.check_kill_switch():
+                time.sleep(30)
+                continue
+                
+            # 1. Проверка баланса и рисков
             balance = get_account_balance(client, account_id)
+            if not risk_manager.evaluate_risk(balance):
+                continue
             
-            # 2. Получение текущей цены Сбербанка
+            # 2. Получение текущей цены актива
             sber_price = get_price(client, SBER_FIGI)
-            logger.info(f"Текущая цена Сбербанка (FIGI: {SBER_FIGI}): {sber_price} руб.")
+            logger.info(f"Анализ актива (SBER): Цена = {sber_price} руб. Текущий баланс = {balance:.2f} руб.")
             
-            # 3. Логика стратегии
-            # Здесь будет ваша торговая логика (покупка/продажа)
+            # 3. Логика стратегии (каркас)
+            # Здесь бот будет вызывать ML-модели или индикаторы (SMA, RSI)
             if sber_price > 0:
-                logger.info(f"Следим за ценой. Баланс позволяет купить {int(balance // sber_price)} акций.")
+                # Временно выводим инфо вместо реальной покупки
+                logger.info(f"Сигналов на вход нет. Лимит риска соблюден.")
             
-            logger.info("Ожидание перед следующим циклом проверки...")
-            time.sleep(60) # Ждем 60 секунд перед следующей проверкой
+            error_count = 0 # Сброс ошибок при успешном цикле
+            time.sleep(60)
             
+        except RequestError as e:
+            error_count += 1
+            wait_time = min(10 * (2 ** error_count), 300) # Exponential backoff до 5 минут
+            logger.error(f"Ошибка API Тинькофф: {e}. Повтор через {wait_time} сек...")
+            time.sleep(wait_time)
         except Exception as e:
-            logger.error(f"Непредвиденная ошибка в торговом цикле: {e}")
-            time.sleep(10) # Короткая пауза при ошибке перед повторной попыткой
+            logger.critical(f"Критическая ошибка в торговом цикле: {e}")
+            time.sleep(30)
 
 def main():
     if not TINKOFF_TOKEN:

@@ -25,11 +25,25 @@ def get_git_commits():
     except FileNotFoundError:
         return []
 
+KILL_SWITCH_FILE = "kill_switch.flag"
+
 @app.route('/')
 def index():
     status = "Запущен" if bot_process and bot_process.poll() is None else "Остановлен"
     commits = get_git_commits()
-    return render_template('index.html', status=status, commits=commits)
+    kill_switch_active = os.path.exists(KILL_SWITCH_FILE)
+    return render_template('index.html', status=status, commits=commits, kill_switch_active=kill_switch_active)
+
+@app.route('/toggle_kill_switch', methods=['POST'])
+def toggle_kill_switch():
+    if os.path.exists(KILL_SWITCH_FILE):
+        os.remove(KILL_SWITCH_FILE)
+        flash("Kill Switch ДЕАКТИВИРОВАН. Бот возобновит работу.", "success")
+    else:
+        with open(KILL_SWITCH_FILE, 'w') as f:
+            f.write("Manual activation")
+        flash("ВНИМАНИЕ! Kill Switch АКТИВИРОВАН. Торговля остановлена!", "danger")
+    return redirect(url_for('index'))
 
 @app.route('/logs')
 def get_logs():
