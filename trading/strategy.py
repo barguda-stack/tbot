@@ -10,6 +10,30 @@ def analyze_market_and_select(instruments: list) -> list:
     """
     return instruments
 
+def run_premarket_analysis(client) -> list:
+    """
+    Анализирует доступные инструменты рынка для выявления инструментов 
+    с максимальным возможным профитом (рейтинг).
+    Для простоты демонстрации используем заглушку - случайный рейтинг.
+    В реальности здесь должен быть анализ волатильности и тренда.
+    """
+    logger.info("Запуск премаркет-анализа...")
+    from trading.market import get_available_instruments
+    import random
+    
+    instruments = get_available_instruments(client)
+    
+    # Добавляем псевдо-оценку (score) каждому инструменту (от 0 до 100)
+    # В реальности тут может быть: (High - Low) / Close * 100
+    for inst in instruments:
+        inst['profit_score'] = round(random.uniform(10.0, 99.9), 1)
+        
+    # Сортируем по убыванию рейтинга
+    top_instruments = sorted(instruments, key=lambda x: x['profit_score'], reverse=True)
+    
+    # Возвращаем топ-10
+    return top_instruments[:10]
+
 def get_news_sentiment(ticker: str) -> str:
     """Аналитика новостей по инструментам (заглушка)."""
     # Здесь должен быть парсинг новостей (RSS/API).

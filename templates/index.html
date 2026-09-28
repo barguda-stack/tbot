@@ -85,10 +85,15 @@
                 </div>
             </div>
 
-            <div class="row mb-3">
-                <div class="col-12">
-                    <h4 class="fw-bold">Доступные инструменты (Анализ рынка)</h4>
-                    <p class="text-muted small">Бот автоматически отбирает ликвидные инструменты без плеча.</p>
+            <div class="row mb-3 align-items-center">
+                <div class="col-md-8">
+                    <h4 class="fw-bold m-0">Доступные инструменты (Анализ рынка)</h4>
+                    <p class="text-muted small m-0">Бот автоматически отбирает ликвидные инструменты без плеча.</p>
+                </div>
+                <div class="col-md-4 text-end">
+                    <button class="btn btn-warning fw-bold shadow-sm" id="btn-premarket" data-bs-toggle="modal" data-bs-target="#premarketModal">
+                        📈 Премаркет (Топ Инструментов)
+                    </button>
                 </div>
             </div>
 
@@ -153,6 +158,38 @@
             <div class="row">
                 <!-- Управление процессом -->
                 <div class="col-md-5">
+                    <!-- Настройки API -->
+                    <div class="card mb-4 border-primary">
+                        <div class="card-header bg-primary text-white text-center fw-bold">
+                            Настройки Tinkoff API
+                        </div>
+                        <div class="card-body">
+                            <form method="POST" action="/api/update_token">
+                                <div class="mb-3">
+                                    <label class="form-label">TINKOFF_TOKEN (ReadOnly / FullAccess)</label>
+                                    <input type="password" class="form-control" name="tinkoff_token" placeholder="t.********" required>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <span class="small text-muted d-block">Статус токена:</span>
+                                        {% if has_token %}
+                                            {% if api_env == 'Песочница' %}
+                                                <span class="badge bg-warning text-dark">{{ api_env }}</span>
+                                            {% elif api_env == 'Боевой контур' %}
+                                                <span class="badge bg-danger">{{ api_env }}</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">{{ api_env }}</span>
+                                            {% endif %}
+                                        {% else %}
+                                            <span class="badge bg-secondary">Не настроен</span>
+                                        {% endif %}
+                                    </div>
+                                    <button type="submit" class="btn btn-primary">Сохранить и Проверить</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                
                     <div class="card mb-4">
                         <div class="card-header text-center fw-bold">
                             Управление ботом
@@ -219,6 +256,40 @@
         </div>
         
     </div>
+</div>
+
+<!-- Модальное окно Премаркета -->
+<div class="modal fade" id="premarketModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header bg-warning text-dark">
+        <h5 class="modal-title fw-bold">Анализ рынка (Рейтинг по профиту)</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      <div class="modal-body p-0">
+        <div id="premarket-loading" class="text-center p-5">
+            <div class="spinner-border text-warning" role="status"></div>
+            <p class="mt-3">Выполняется анализ всех инструментов. Это может занять несколько секунд...</p>
+        </div>
+        <table class="table table-hover m-0 d-none" id="premarket-table">
+            <thead class="table-light">
+                <tr>
+                    <th>Рейтинг</th>
+                    <th>Тикер</th>
+                    <th>Название</th>
+                    <th>Ожидаемый Профит Score</th>
+                </tr>
+            </thead>
+            <tbody id="premarket-tbody">
+            </tbody>
+        </table>
+        <div id="premarket-error" class="alert alert-danger m-3 d-none"></div>
+      </div>
+      <div class="modal-footer bg-light">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -450,6 +521,49 @@
             }
         });
     }
+
+    // Логика модального окна Премаркета
+    document.getElementById('premarketModal').addEventListener('show.bs.modal', function () {
+        const loading = document.getElementById('premarket-loading');
+        const table = document.getElementById('premarket-table');
+        const tbody = document.getElementById('premarket-tbody');
+        const error = document.getElementById('premarket-error');
+        
+        loading.classList.remove('d-none');
+        table.classList.add('d-none');
+        error.classList.add('d-none');
+        tbody.innerHTML = '';
+
+        fetch('/api/premarket')
+            .then(res => res.json())
+            .then(data => {
+                loading.classList.add('d-none');
+                if (data.error) {
+                    error.textContent = data.error;
+                    error.classList.remove('d-none');
+                } else if (data.instruments) {
+                    table.classList.remove('d-none');
+                    data.instruments.forEach((inst, index) => {
+                        const tr = document.createElement('tr');
+                        // Выделяем топ-3
+                        if (index < 3) tr.classList.add('table-success');
+                        
+                        tr.innerHTML = `
+                            <td class="fw-bold">#${index + 1}</td>
+                            <td class="fw-bold">${inst.ticker}</td>
+                            <td>${inst.name}</td>
+                            <td><span class="badge bg-success fs-6">${inst.profit_score}</span></td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                }
+            })
+            .catch(err => {
+                loading.classList.add('d-none');
+                error.textContent = "Ошибка при запросе к серверу: " + err;
+                error.classList.remove('d-none');
+            });
+    });
 
     // Опрос каждые 5 секунд
     setInterval(fetchDashboard, 5000);

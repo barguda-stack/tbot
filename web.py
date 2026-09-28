@@ -33,7 +33,15 @@ def index():
     status = "Запущен" if bot_process and bot_process.poll() is None else "Остановлен"
     commits = get_git_commits()
     kill_switch_active = os.path.exists(KILL_SWITCH_FILE)
-    return render_template('index.html', status=status, commits=commits, kill_switch_active=kill_switch_active)
+    
+    from core.storage import get_settings
+    settings = get_settings()
+    api_env = settings.get("api_env", "Не задан")
+    has_token = bool(settings.get("tinkoff_token"))
+    
+    return render_template('index.html', status=status, commits=commits, 
+                           kill_switch_active=kill_switch_active, 
+                           api_env=api_env, has_token=has_token)
 
 @app.route('/toggle_kill_switch', methods=['POST'])
 def toggle_kill_switch():
@@ -56,6 +64,81 @@ def api_dashboard():
                 return jsonify(state)
         else:
             return jsonify({"error": "Данные пока не собраны"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/update_token', methods=['POST'])
+def update_token():
+    """Обновление API-токена, проверка окружения (Песочница/Бой) и сохранение."""
+    try:
+        token = request.form.get("tinkoff_token", "")
+        if not token:
+            flash("Токен не может быть пустым.", "danger")
+            return redirect(url_for('index'))
+            
+        # Импортируем детектор из core.client
+        from core.client import detect_environment
+        
+        # Проверяем токен и получаем среду
+        env = detect_environment(token)
+        is_sandbox = "sandbox" in env.lower()
+        
+        # Обновляем settings.json
+        from core.storage import get_settings, save_settings
+        settings = get_settings()
+        settings["tinkoff_token"] = token
+        settings["api_env"] = "Песочница" if is_sandbox else "Боевой контур"
+        save_settings(settings)
+        
+        # Обновляем также .env файл для совместимости с python-dotenv
+        try:
+            with open(".env", "r") as f:
+                lines = f.readlines()
+        except FileNotFoundError:
+            lines = []
+            
+        with open(".env", "w") as f:
+            token_written = False
+            for line in lines:
+                if line.startswith("TINKOFF_TOKEN="):
+                    f.write(f"TINKOFF_TOKEN={token}\n")
+                    token_written = True
+                else:
+                    f.write(line)
+            if not token_written:
+                f.write(f"TINKOFF_TOKEN={token}\n")
+                
+        flash(f"Токен сохранен! Определена среда: {settings['api_env']}", "success")
+        
+        # Если бот запущен, его нужно перезапустить с новым токеном
+        global bot_process
+        if bot_process and bot_process.poll() is None:
+            stop_bot()
+            start_bot()
+            
+    except Exception as e:
+        flash(f"Ошибка проверки токена: {e}", "danger")
+        
+    return redirect(url_for('index'))
+
+@app.route('/api/premarket', methods=['GET'])
+def api_premarket():
+    """Запускает алгоритм премаркета и возвращает топ инструментов."""
+    try:
+        from core.storage import get_settings
+        settings = get_settings()
+        token = settings.get("tinkoff_token")
+        
+        if not token:
+            return jsonify({"error": "Токен не настроен. Заполните настройки Tinkoff API."}), 400
+            
+        from core.client import init_client
+        from trading.strategy import run_premarket_analysis
+        
+        with init_client(token) as client:
+            top_instruments = run_premarket_analysis(client)
+            return jsonify({"instruments": top_instruments})
+            
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
