@@ -21,7 +21,7 @@ def main():
     logger.info("Инициализация Tinkoff Invest API...")
     
     with init_client(TINKOFF_TOKEN) as client:
-        # Если аккаунт не задан жестко в .env, берем первый доступный
+        # Если аккаунт не задан жестко в .env, берем первый доступный непустой
         target_account_id = ACCOUNT_ID
         if not target_account_id:
             logger.info("ACCOUNT_ID не предоставлен, получаем список доступных аккаунтов...")
@@ -30,8 +30,23 @@ def main():
                 if not accounts:
                     logger.error("Аккаунты для данного токена не найдены.")
                     return
-                target_account_id = accounts[0].id
-                logger.info(f"Используется аккаунт: {target_account_id}")
+                
+                logger.info(f"Найдено {len(accounts)} аккаунтов. Ищем непустой...")
+                target_account_id = accounts[0].id # Фолбэк на первый
+                
+                # Ищем аккаунт с положительным балансом или позициями
+                for acc in accounts:
+                    try:
+                        portfolio = client.operations.get_portfolio(account_id=acc.id)
+                        total_amt = portfolio.total_amount_portfolio.units + (portfolio.total_amount_portfolio.nano / 1e9)
+                        if total_amt > 0:
+                            target_account_id = acc.id
+                            logger.info(f"Выбран аккаунт {target_account_id} с балансом: {total_amt}")
+                            break
+                    except Exception as e:
+                        logger.debug(f"Пропуск аккаунта {acc.id}: {e}")
+                        
+                logger.info(f"Итоговый рабочий аккаунт: {target_account_id}")
             except Exception as e:
                 logger.error(f"Ошибка получения аккаунтов: {e}")
                 return
