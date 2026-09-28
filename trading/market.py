@@ -52,6 +52,37 @@ def get_available_instruments(client: Client) -> list:
         logger.error(f"Ошибка получения инструментов: {e}")
         return []
 
+def get_historical_data_1y(client: Client, figi: str) -> list:
+    """Получает дневные свечи за последний год для обучения алгоритмов."""
+    logger.info(f"Запрос исторической даты за 1 год для {figi}...")
+    from datetime import datetime, timedelta, timezone
+    
+    current_time = datetime.now(timezone.utc)
+    from_time = current_time - timedelta(days=365)
+    
+    candles_data = []
+    try:
+        candles_response = client.market_data.get_candles(
+            figi=figi,
+            from_=from_time,
+            to=current_time,
+            interval=CandleInterval.CANDLE_INTERVAL_DAY
+        )
+        for c in candles_response.candles:
+            candles_data.append({
+                "time": int(c.time.timestamp()),
+                "open": c.open.units + c.open.nano / 1e9,
+                "high": c.high.units + c.high.nano / 1e9,
+                "low": c.low.units + c.low.nano / 1e9,
+                "close": c.close.units + c.close.nano / 1e9,
+                "volume": c.volume
+            })
+        logger.info(f"Собрано {len(candles_data)} дневных свечей для {figi}")
+    except Exception as e:
+        logger.error(f"Ошибка получения истории за 1 год для {figi}: {e}")
+        
+    return candles_data
+
 def get_candles_15m_1d(client: Client, figi: str) -> list:
     """Получает 15-минутные свечи за последние сутки."""
     from datetime import datetime, timedelta, timezone

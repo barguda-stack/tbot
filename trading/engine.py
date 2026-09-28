@@ -12,29 +12,26 @@ def execute_trade_cycle(client: Client, account_id: str):
     logger.info("Запуск торгового цикла...")
     risk_manager = RiskManager(max_drawdown_percent=2.0)
     
-    # 1. Анализ рынка
-    all_instruments = market.get_available_instruments(client)
-    selected_instruments = strategy.analyze_market_and_select(all_instruments)
-    
     error_count = 0
     
     while True:
         try:
-            # 2. Проверка аварийной остановки (Kill Switch)
+            # 1. Проверка аварийной остановки (Kill Switch)
             if risk_manager.check_kill_switch():
                 time.sleep(30)
                 continue
             
             # Читаем пользовательские настройки из UI
+            from core.storage import get_settings, save_settings
             settings = get_settings()
             
-            # 3. Общий риск-менеджмент
+            # 2. Общий риск-менеджмент
             balance = market.get_account_balance(client, account_id)
             if not risk_manager.evaluate_risk(balance):
                 time.sleep(30)
                 continue
             
-            # 4. Получение открытых позиций
+            # 3. Получение открытых позиций
             open_positions = market.get_open_positions(client, account_id)
             
             dashboard_data = {
@@ -43,19 +40,34 @@ def execute_trade_cycle(client: Client, account_id: str):
                 "instruments": []
             }
             
-            # 5. Анализ каждого инструмента
-            for inst in selected_instruments:
-                figi = inst["figi"]
-                ticker = inst["ticker"]
-                
-                # Загрузка локальных настроек инструмента
-                inst_settings = settings.get("instruments", {}).get(ticker, {})
+            instruments_settings = settings.get("instruments", {})
+            settings_changed = False
+            
+            # 4. Анализ каждого инструмента из добавленных в настройки
+            for ticker, inst_settings in instruments_settings.items():
+                figi = inst_settings.get("figi")
+                if not figi:
+                    continue
+                    
                 is_active = inst_settings.get("active", False)
                 max_lots = inst_settings.get("max_lots", 1)
                 max_trades = inst_settings.get("max_trades", 5)
+                ml_trained = inst_settings.get("ml_trained", False)
                 
-                # Статус обучения
-                ml_trained = strategy.check_ml_trained(ticker)
+                # Если инструмент не обучен, запускаем сбор истории и обучение
+                if not ml_trained:
+                    logger.info(f"[{ticker}] Инструмент не обучен. Запуск сбора истории...")
+                    historical_data = market.get_historical_data_1y(client, figi)
+                    if historical_data:
+                        # Запуск обучения
+                        success = strategy.train_30_algorithms(ticker, historical_data)
+                        if success:
+                            # Помечаем инструмент как обученный
+                            settings["instruments"][ticker]["ml_trained"] = True
+                            ml_trained = True
+                            settings_changed = True
+                    else:
+                        logger.warning(f"[{ticker}] Не удалось собрать исторические данные для обучения.")
                 
                 # Рыночные данные
                 current_price = market.get_price(client, figi)
@@ -67,8 +79,8 @@ def execute_trade_cycle(client: Client, account_id: str):
                 dashboard_data["instruments"].append({
                     "figi": figi,
                     "ticker": ticker,
-                    "name": inst["name"],
-                    "lot": inst["lot"],
+                    "name": inst_settings.get("name", ticker),
+                    "lot": inst_settings.get("lot", 1),
                     "current_price": current_price,
                     "invested": invested_amount,
                     "position": position_balance,
@@ -79,7 +91,7 @@ def execute_trade_cycle(client: Client, account_id: str):
                     "candles": candles_data
                 })
                 
-                # 6. Принятие решений (если инструмент разрешен к торгам)
+                # 5. Принятие решений (если инструмент разрешен к торгам)
                 if is_active and ml_trained:
                     logger.info(f"Анализ {ticker}: Цена = {current_price:.2f} ₽")
                     news_sentiment = strategy.get_news_sentiment(ticker)
@@ -97,6 +109,9 @@ def execute_trade_cycle(client: Client, account_id: str):
                             logger.info(f"[{ticker}] Отправка ордера на ПРОДАЖУ...")
                             # order = client.orders.post_order(...)
             
+            if settings_changed:
+                save_settings(settings)
+                
             # Сохранение состояния для фронтенда
             save_bot_state(dashboard_data)
             

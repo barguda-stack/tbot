@@ -142,6 +142,37 @@ def api_premarket():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/add_instrument', methods=['POST'])
+def add_instrument():
+    """Добавляет инструмент из премаркета в список для отслеживания и обучения."""
+    try:
+        data = request.json
+        ticker = data.get("ticker")
+        figi = data.get("figi")
+        name = data.get("name")
+        lot = data.get("lot", 1)
+
+        from core.storage import get_settings, save_settings
+        settings = get_settings()
+
+        if ticker not in settings["instruments"]:
+            settings["instruments"][ticker] = {
+                "figi": figi,
+                "name": name,
+                "lot": lot,
+                "active": False, # По умолчанию выключено, пока не обучится
+                "max_lots": 1,
+                "max_trades": 5,
+                "ml_trained": False # Метка для движка - нужно собрать историю и обучить
+            }
+            save_settings(settings)
+            return jsonify({"status": "success", "message": f"{ticker} добавлен. Ожидание сбора истории и обучения."})
+        else:
+            return jsonify({"status": "info", "message": f"{ticker} уже добавлен."})
+            
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
+
 @app.route('/api/update_instrument', methods=['POST'])
 def update_instrument():
     """Обновляет настройки для конкретного инструмента."""
@@ -149,14 +180,8 @@ def update_instrument():
         data = request.json
         ticker = data.get("ticker")
         
-        # Читаем текущие настройки
-        settings = {"instruments": {}}
-        if os.path.exists("settings.json"):
-            with open("settings.json", "r", encoding="utf-8") as f:
-                settings = json.load(f)
-                
-        if "instruments" not in settings:
-            settings["instruments"] = {}
+        from core.storage import get_settings, save_settings
+        settings = get_settings()
             
         if ticker not in settings["instruments"]:
             settings["instruments"][ticker] = {}
@@ -169,8 +194,7 @@ def update_instrument():
         if "max_trades" in data:
             settings["instruments"][ticker]["max_trades"] = int(data["max_trades"])
             
-        with open("settings.json", "w", encoding="utf-8") as f:
-            json.dump(settings, f, ensure_ascii=False, indent=2)
+        save_settings(settings)
             
         return jsonify({"status": "success"})
     except Exception as e:

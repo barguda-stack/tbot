@@ -278,6 +278,7 @@
                     <th>Тикер</th>
                     <th>Название</th>
                     <th>Ожидаемый Профит Score</th>
+                    <th>Действие</th>
                 </tr>
             </thead>
             <tbody id="premarket-tbody">
@@ -553,8 +554,46 @@
                             <td class="fw-bold">${inst.ticker}</td>
                             <td>${inst.name}</td>
                             <td><span class="badge bg-success fs-6">${inst.profit_score}</span></td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-primary btn-add-inst" 
+                                    data-ticker="${inst.ticker}" 
+                                    data-figi="${inst.figi}" 
+                                    data-name="${inst.name}" 
+                                    data-lot="${inst.lot}">
+                                    + Добавить
+                                </button>
+                            </td>
                         `;
                         tbody.appendChild(tr);
+                    });
+                    
+                    // Биндинг кнопок добавления
+                    document.querySelectorAll('.btn-add-inst').forEach(btn => {
+                        btn.addEventListener('click', function() {
+                            const payload = {
+                                ticker: this.dataset.ticker,
+                                figi: this.dataset.figi,
+                                name: this.dataset.name,
+                                lot: parseInt(this.dataset.lot)
+                            };
+                            
+                            fetch('/api/add_instrument', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(payload)
+                            })
+                            .then(r => r.json())
+                            .then(d => {
+                                if (d.status === 'success' || d.status === 'info') {
+                                    alert(d.message);
+                                    // Сразу закрываем модалку и обновляем дашборд
+                                    bootstrap.Modal.getInstance(document.getElementById('premarketModal')).hide();
+                                    fetchDashboard();
+                                } else {
+                                    alert("Ошибка: " + d.message);
+                                }
+                            });
+                        });
                     });
                 }
             })
