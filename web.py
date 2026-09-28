@@ -31,6 +31,22 @@ def index():
     commits = get_git_commits()
     return render_template('index.html', status=status, commits=commits)
 
+@app.route('/logs')
+def get_logs():
+    """Возвращает последние 50 строк из файла bot.log"""
+    log_file_path = 'bot.log'
+    if not os.path.exists(log_file_path):
+        return {"logs": "Лог файл пока не создан. Запустите бота."}
+    
+    try:
+        with open(log_file_path, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+            # Берем последние 50 строк
+            last_lines = lines[-50:]
+            return {"logs": "".join(last_lines)}
+    except Exception as e:
+        return {"logs": f"Ошибка чтения логов: {str(e)}"}
+
 @app.route('/start', methods=['POST'])
 def start_bot():
     global bot_process

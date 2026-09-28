@@ -6,8 +6,15 @@ from dotenv import load_dotenv
 from tinkoff.invest import Client, RequestError, PortfolioResponse, PositionsResponse
 from tinkoff.invest.constants import INVEST_GRPC_API
 
-# Настройка базового логирования
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Настройка базового логирования (вывод в файл bot.log и в консоль)
+logging.basicConfig(
+    level=logging.INFO, 
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("bot.log", encoding="utf-8"),
+        logging.StreamHandler()
+    ]
+)
 logger = logging.getLogger(__name__)
 
 # Загрузка переменных окружения из .env
